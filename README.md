@@ -24,7 +24,6 @@ All results are stored in `.csv` files. Each file contains the following columns
 - **`all_PADRE/`** – Results *with* PADRE data augmentation. `10k/` is DDS10; `130k/` is DTP.  
 - **`01_BestCombosDTP/`** – A curated collection of the best descriptor/model combinations for the **DTP** dataset, as shown in the main paper.  
 - **`02_BestCombosDDS10/`** – Same as above, but for the **DDS10** dataset.
-- **`datasets/`** - Contains pickle files. These are handled by the [MDRMF](https://github.com/MolinDiscovery/MDRMF) package and contains featurized datasets. Here, the datasets are also given as csv files.
 - **`starting_SMILE_sets/`** - The starting sets for the active learning experiments.
 
 ## Reproducing Experiments
@@ -40,8 +39,8 @@ To reproduce an experiment (e.g., acquisition function tests on DTP):
     ```
 
 2. Install the MDRMF package. See [MDRMF](https://github.com/MolinDiscovery/MDRMF) for details.
-
-3. Run the experiment with:
+3. Download dataset(s) (see below)
+4. Run the experiment with:
 
     ```bash
     python -m MDRMF.experimenter path/to/settings.yaml
