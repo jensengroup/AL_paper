@@ -10,9 +10,11 @@ import glob
 import matplotlib
 
 # Set this variable to either 'std_dev' or 'std_error' to control which metric is used globally.
-ERROR_TYPE = 'std_error'  # 'std_dev' or 'std_error'
-
+ERROR_TYPE = 'std_dev'  # 'std_dev' or 'std_error'
+TABLE_DECIMAL_PLACES = 2
 DARK_MODE = False
+
+
 
 if DARK_MODE:
     plt.rcParams['figure.facecolor'] = 'grey'   
@@ -487,55 +489,60 @@ def reorganize_data(data):
 
 def table_data(files, thresholds=[1, 5, 20]):
     results = []
-    
+
     for file in files:
         data = pd.read_csv(file)
-        
+
         columns_after_rank = data.columns[3:]  # Adjust as needed
         name = file.split('\\')[-1].split('.')[0]
-        no_of_splits = name.count('/')
-        name = name.split('/')[no_of_splits]
-        
+        if '/' in name:
+             name = name.split('/')[-1]
+        elif '\\' in name: # Handle Windows paths if necessary
+             name = name.split('\\')[-1]
+
         multiplier = int(re.search(r'\d+', columns_after_rank[0]).group())
-        
+
         for column in columns_after_rank:
             data[column] *= multiplier  # Multiply to get actual counts
-            
+
             pivot_data = data.pivot(index='rank', columns='replicate', values=column)
-            replicates = pivot_data.shape[1]
-            
+            replicates = pivot_data.shape[1] # Number of replicates is the number of columns before adding Avg, Std Dev etc.
+
             pivot_data['Avg.'] = pivot_data.mean(axis=1)
             pivot_data['Std. dev.'] = pivot_data.std(axis=1)
-            
+            pivot_data['Std. error'] = pivot_data['Std. dev.'] / np.sqrt(replicates) # Calculate Std Error
+
             probabilities = {}
             for threshold in thresholds:
                 indicator = (pivot_data.iloc[:, :replicates] >= threshold).astype(int)
                 prob = indicator.sum(axis=1) / replicates
                 pivot_data[f'Prob >= {threshold}'] = prob
                 probabilities[f'Prob >= {threshold}'] = prob.iloc[-1]
-            
+
             avg = pivot_data.iloc[-1]['Avg.']
             std = pivot_data.iloc[-1]['Std. dev.']
-            
+            std_err = pivot_data.iloc[-1]['Std. error'] # Get Std Error for the last row
+
             result = {
                 'Name': name,
                 'Avg.': avg,
                 'Std. dev.': std,
+                'Std. error': std_err, # Add Std Error here
             }
             result.update(probabilities)
             results.append(result)
-    
+
     result_df = pd.DataFrame(results)
-    
+
     probability_cols = [col for col in result_df.columns if col.startswith('Prob >=')]
     probability_cols_sorted = sorted(probability_cols, key=lambda x: int(re.search(r'\d+', x).group()))
-    
-    cols = ['Name', 'Avg.', 'Std. dev.'] + probability_cols_sorted
+
+    cols = ['Name', 'Avg.', 'Std. dev.', 'Std. error'] + probability_cols_sorted # Add Std. error to column list
     result_df = result_df[cols]
-    
+
     result_df.set_index('Name', inplace=True)
-    
-    return result_df.round(2)
+
+    return result_df.round(TABLE_DECIMAL_PLACES)
 
 
 def combine_plot_single_graph(plot_funcs, ncols=2):
@@ -561,16 +568,31 @@ def combine_plot_single_graph(plot_funcs, ncols=2):
     return fig
 
 
-def padre_vs_normal_table(table_norm, DtpRfPadreTable, column_names=['Normal', 'PADRE']):
+def padre_vs_normal_table(table_norm, DtpRfPadreTable, column_names=['Normal', 'PADRE'], error_metric='Std. error'):
+    """
+    Generates a LaTeX table comparing two DataFrames (e.g., Normal vs. Padre).
+
+    Args:
+        table_norm (pd.DataFrame): DataFrame for the first dataset.
+        DtpRfPadreTable (pd.DataFrame): DataFrame for the second dataset.
+        column_names (list): List of two strings for the main column headers. Defaults to ['Normal', 'PADRE'].
+        error_metric (str): The error metric to display ('Std. dev.' or 'Std. error'). Defaults to 'Std. dev.'.
+
+    Returns:
+        str: A string containing LaTeX code for the table.
+    """
+    if error_metric not in ['Std. dev.', 'Std. error']:
+        raise ValueError("error_metric must be either 'Std. dev.' or 'Std. error'")
 
     def format_probs(df):
-        return df.apply(lambda row: f"{row['Prob >= 1']:.2f}, {row['Prob >= 5']:.2f}, {row['Prob >= 20']:.2f}", axis=1)
+        return df.apply(lambda row: f"{row['Prob >= 1']:.{TABLE_DECIMAL_PLACES}f}, {row['Prob >= 5']:.{TABLE_DECIMAL_PLACES}f}, {row['Prob >= 20']:.{TABLE_DECIMAL_PLACES}f}", axis=1)
 
     normal_probs = format_probs(table_norm)
     padre_probs = format_probs(DtpRfPadreTable)
 
     col_1 = column_names[0]
     col_2 = column_names[1]
+    error_header = 'Std. dev.' if error_metric == 'Std. dev.' else 'Std. err.'
 
     latex_str = (
         "\\begin{table}[ht]\n"
@@ -579,8 +601,8 @@ def padre_vs_normal_table(table_norm, DtpRfPadreTable, column_names=['Normal', '
         "\\toprule\n"
         f"& \\multicolumn{{3}}{{c}}{{${{\\text{{{col_1}}}}}$}} & \\multicolumn{{3}}{{c}}{{${{\\text{{{col_2}}}}}$}} \\\\\n"
         "\\cmidrule(lr){2-4}\\cmidrule(lr){5-7}\n"
-        "Name & Avg. & Std. dev. & Prob $\\geq$ & Avg. & Std. dev. & Prob $\\geq$ \\\\\n"
-        "& & & \\{1, 5, 20\\} & & & \\{1, 5, 20\\} \\\\ \n"  # Note the space and newline
+        f"Name & Avg. & {error_header} & Prob $\\geq$ & Avg. & {error_header} & Prob $\\geq$ \\\\\n" # Use error_header
+        "& & & \\{1, 5, 20\\} & & & \\{1, 5, 20\\} \\\\ \n"
         "\\midrule\n"
     )
 
@@ -590,12 +612,12 @@ def padre_vs_normal_table(table_norm, DtpRfPadreTable, column_names=['Normal', '
         padre_row = DtpRfPadreTable.loc[name]
 
         line = (
-            f"{name:<10} & "  # Left-justify name in a field of width 10 for spacing
-            f"{normal_row['Avg.']:.2f} & "
-            f"{normal_row['Std. dev.']:.2f} & "
+            f"{name:<10} & "
+            f"{normal_row['Avg.']:.{TABLE_DECIMAL_PLACES}f} & "
+            f"{normal_row[error_metric]:.{TABLE_DECIMAL_PLACES}f} & " # Use error_metric here
             f"{normal_probs[name]} & "
-            f"{padre_row['Avg.']:.2f} & "
-            f"{padre_row['Std. dev.']:.2f} & "
+            f"{padre_row['Avg.']:.{TABLE_DECIMAL_PLACES}f} & "
+            f"{padre_row[error_metric]:.{TABLE_DECIMAL_PLACES}f} & " # Use error_metric here
             f"{padre_probs[name]} \\\\\n"
         )
         latex_str += line
@@ -603,22 +625,29 @@ def padre_vs_normal_table(table_norm, DtpRfPadreTable, column_names=['Normal', '
     latex_str += (
         "\\bottomrule\n"
         "\\end{tabular}\n"
-        "\\caption{Comparison of Normal and Padre datasets across key metrics.}\n"
-        "\\label{tab:normal_padre_updated}\n"
+        f"\\caption{{Comparison of {col_1} and {col_2} datasets across key metrics.}}\n" # Dynamic caption
+        f"\\label{{tab:{col_1.lower()}_{col_2.lower()}_comparison}}\n" # Dynamic label
         "\\end{table}\n"
     )
 
     return latex_str
 
 
-def generate_comparison_table(tables):
+def generate_comparison_table(tables, error_metric='Std. error'):
     """
     Generates a comparison table from a list of DataFrames.
-    Each DataFrame is expected to have columns: ['Avg.', 'Std. dev.', 'Prob >= 1', 'Prob >= 5', 'Prob >= 20'].
+    Each DataFrame is expected to have columns: ['Avg.', 'Std. dev.', 'Std. error', 'Prob >= 1', 'Prob >= 5', 'Prob >= 20'].
     The index in each DataFrame should contain rows that include 'No noise', 'noise 1', 'noise 2', 'noise 3', etc.
 
-    Returns a string containing LaTeX code for the table.
+    Args:
+        tables (list): A list of pandas DataFrames to compare.
+        error_metric (str): The error metric to display ('Std. dev.' or 'Std. error'). Defaults to 'Std. dev.'.
+
+    Returns:
+        str: A string containing LaTeX code for the table.
     """
+    if error_metric not in ['Std. dev.', 'Std. error']:
+        raise ValueError("error_metric must be either 'Std. dev.' or 'Std. error'")
 
     noise_mapping = {
         'noise 1': 'Noise 1$\\sigma$',
@@ -635,12 +664,12 @@ def generate_comparison_table(tables):
     for df in tables:
         first_row_name = df.index[0]  # e.g., "MLP CDDD Greedy Padre"
         labels.append(first_row_name)
-        
+
         df = df.copy()
         df.rename(index={first_row_name: 'No noise'}, inplace=True)
-        
+
         formatted_probs = df.apply(
-            lambda row: f"{row['Prob >= 1']:.2f}, {row['Prob >= 5']:.2f}, {row['Prob >= 20']:.2f}",
+            lambda row: f"{row['Prob >= 1']:.{TABLE_DECIMAL_PLACES}f}, {row['Prob >= 5']:.{TABLE_DECIMAL_PLACES}f}, {row['Prob >= 20']:.{TABLE_DECIMAL_PLACES}f}",
             axis=1
         )
         formatted_probs_list.append(formatted_probs.to_dict())
@@ -675,9 +704,11 @@ def generate_comparison_table(tables):
     midrule = "".join([f"\\cmidrule(lr){{{cr}}}" for cr in column_ranges]) + "\n"
     latex_str += midrule
 
+    # Use the selected error metric in the sub-header
+    error_header = 'Std. dev.' if error_metric == 'Std. dev.' else 'Std. err.'
     sub_headers = []
     for _ in tables:
-        sub_headers.extend(["Avg.", "Std. dev.", "Prob $\\geq$ \\{1, 5, 20\\}"])
+        sub_headers.extend(["Avg.", error_header, "Prob $\\geq$ \\{1, 5, 20\\}"])
     latex_str += " & " + " & ".join(sub_headers) + " \\\\\n"
     latex_str += "\\midrule\n"
 
@@ -692,8 +723,8 @@ def generate_comparison_table(tables):
                 if name in table:
                     row = table[name]
                     line_elements.extend([
-                        f"{row['Avg.']:.2f}",
-                        f"{row['Std. dev.']:.2f}",
+                        f"{row['Avg.']:.{TABLE_DECIMAL_PLACES}f}",
+                        f"{row[error_metric]:.{TABLE_DECIMAL_PLACES}f}", # Use the selected error metric here
                         f"{probs[name]}"
                     ])
                 else:
@@ -750,13 +781,28 @@ def create_probability_table_leq(df_le1, df_le5, df_le20):
     return latex_str
 
 
-def generate_comparison_table_enrichment(tables, labels=['header1', 'header2']):
+def generate_comparison_table_enrichment(tables, labels=['header1', 'header2'], error_metric='Std. error'):
+    """
+    Generates a comparison table from a list of DataFrames, typically for enrichment factor analysis.
+    Each DataFrame is expected to have columns: ['Avg.', 'Std. dev.', 'Std. error', 'Prob >= 1', 'Prob >= 5', 'Prob >= 20'].
+
+    Args:
+        tables (list): A list of pandas DataFrames to compare.
+        labels (list): List of strings for the main column headers.
+        error_metric (str): The error metric to display ('Std. dev.' or 'Std. error'). Defaults to 'Std. dev.'.
+
+    Returns:
+        str: A string containing LaTeX code for the table.
+    """
+    if error_metric not in ['Std. dev.', 'Std. error']:
+        raise ValueError("error_metric must be either 'Std. dev.' or 'Std. error'")
+
     table_dicts = []
     formatted_probs_list = []
 
     for df in tables:
         formatted_probs = df.apply(
-            lambda row: f"{row['Prob >= 1']:.2f}, {row['Prob >= 5']:.2f}, {row['Prob >= 20']:.2f}",
+            lambda row: f"{row['Prob >= 1']:.{TABLE_DECIMAL_PLACES}f}, {row['Prob >= 5']:.{TABLE_DECIMAL_PLACES}f}, {row['Prob >= 20']:.{TABLE_DECIMAL_PLACES}f}",
             axis=1
         )
         formatted_probs_list.append(formatted_probs.to_dict())
@@ -766,9 +812,14 @@ def generate_comparison_table_enrichment(tables, labels=['header1', 'header2']):
     for df_dict in table_dicts:
         all_names.update(df_dict.keys())
 
-    row_order = sorted(all_names, key=lambda x: (
-        int(x.split()[0]) if x[0].isdigit() else float('inf'), x
-    ))
+    # Attempt to sort numerically if possible, otherwise alphabetically
+    try:
+        row_order = sorted(all_names, key=lambda x: (
+            int(x.split()[0]) if x[0].isdigit() else float('inf'), x
+        ))
+    except: # Fallback to simple alphabetical sort if parsing fails
+        row_order = sorted(all_names)
+
 
     num_columns = 1 + len(tables) * 3
 
@@ -794,9 +845,11 @@ def generate_comparison_table_enrichment(tables, labels=['header1', 'header2']):
     midrule = "".join([f"\\cmidrule(lr){{{cr}}}" for cr in column_ranges]) + "\n"
     latex_str += midrule
 
+    # Use the selected error metric in the sub-header
+    error_header = 'Std. dev.' if error_metric == 'Std. dev.' else 'Std. err.'
     sub_headers = []
     for _ in tables:
-        sub_headers.extend(["Avg.", "Std. dev.", "Prob $\\geq$ \\{1, 5, 20\\}"])
+        sub_headers.extend(["Avg.", error_header, "Prob $\\geq$ \\{1, 5, 20\\}"])
     latex_str += " & " + " & ".join(sub_headers) + " \\\\\n"
     latex_str += "\\midrule\n"
 
@@ -808,8 +861,8 @@ def generate_comparison_table_enrichment(tables, labels=['header1', 'header2']):
             if name in table:
                 row = table[name]
                 line_elements.extend([
-                    f"{row['Avg.']:.2f}",
-                    f"{row['Std. dev.']:.2f}",
+                    f"{row['Avg.']:.{TABLE_DECIMAL_PLACES}f}",
+                    f"{row[error_metric]:.{TABLE_DECIMAL_PLACES}f}", # Use the selected error metric here
                     f"{probs[name]}"
                 ])
             else:
@@ -821,8 +874,8 @@ def generate_comparison_table_enrichment(tables, labels=['header1', 'header2']):
         "\\bottomrule\n"
         "\\end{tabular}%\n"
         "}\n"
-        "\\caption{Comparison across datasets.}\n"
-        "\\label{tab:comparison_table}\n"
+        "\\caption{Comparison across datasets.}\n" # Consider making caption dynamic if needed
+        "\\label{tab:comparison_table_enrichment}\n" # Consider making label dynamic if needed
         "\\end{table}\n"
     )
 
