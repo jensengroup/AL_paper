@@ -52,7 +52,7 @@ To reproduce an experiment (e.g., acquisition function tests on DTP):
 
 The 30 Molecule starting sets are available in the setting.yaml files. They are placed at the very top under `unique_initial_sample`. For convenience the SMILES are provided as lists in **starting_SMILE_sets/** along with the starting sets for the data enrichment tests.
 
-These directories contain SMILES lists of molecules most enriched for activity based on the top acquisition strategies.
+These directories contain lists of SMILES including the molecules used for enrichment.
 
 ---
 
