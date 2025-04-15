@@ -292,19 +292,20 @@ def get_probability_data(files, thresholds=[1, 5, 20]):
     data_list = {}
     for file in files:
         data = pd.read_csv(file)
-        columns_after_rank = data.columns[3:]  # Assuming 'top-XXXX acquired' is the 4th column
+        columns_after_rank = data.columns[3:]
         name = file.split('\\')[-1].split('.')[0]
         no_of_splits = name.count('/')
         name = name.split('/')[no_of_splits]
         multiplier = int(re.search(r'\d+', columns_after_rank[0]).group())
         for column in columns_after_rank:
-            data[column] *= multiplier  # Multiply to get actual counts
-            pivot_data = data.pivot(index='rank', columns='replicate', values=column).round(6)
+            data[column] *= multiplier
+            pivot_data = data.pivot(index='rank', columns='replicate', values=column)
             replicates = pivot_data.shape[1]
 
             probability_df = pd.DataFrame(index=pivot_data.index)
             for threshold in thresholds:
-                indicator = (pivot_data >= threshold).astype(int)
+                # Round counts to nearest integer (0 decimals) BEFORE comparison
+                indicator = (pivot_data.round(0) >= threshold).astype(int)
                 prob = indicator.sum(axis=1) / replicates
                 probability_df[f'Prob >= {threshold}'] = prob
             data_list[name] = probability_df
@@ -493,41 +494,46 @@ def table_data(files, thresholds=[1, 5, 20]):
     for file in files:
         data = pd.read_csv(file)
 
-        columns_after_rank = data.columns[3:]  # Adjust as needed
+        columns_after_rank = data.columns[3:]
         name = file.split('\\')[-1].split('.')[0]
         if '/' in name:
              name = name.split('/')[-1]
-        elif '\\' in name: # Handle Windows paths if necessary
+        elif '\\' in name:
              name = name.split('\\')[-1]
 
         multiplier = int(re.search(r'\d+', columns_after_rank[0]).group())
 
         for column in columns_after_rank:
-            data[column] *= multiplier  # Multiply to get actual counts
+            data[column] *= multiplier
 
             pivot_data = data.pivot(index='rank', columns='replicate', values=column)
-            replicates = pivot_data.shape[1] # Number of replicates is the number of columns before adding Avg, Std Dev etc.
+            replicates = pivot_data.shape[1]
 
             pivot_data['Avg.'] = pivot_data.mean(axis=1)
             pivot_data['Std. dev.'] = pivot_data.std(axis=1)
-            pivot_data['Std. error'] = pivot_data['Std. dev.'] / np.sqrt(replicates) # Calculate Std Error
+            pivot_data['Std. error'] = pivot_data['Std. dev.'] / np.sqrt(replicates)
 
             probabilities = {}
+            # Select only replicate columns for probability calculation
+            replicate_data = pivot_data.iloc[:, :replicates]
             for threshold in thresholds:
-                indicator = (pivot_data.iloc[:, :replicates] >= threshold).astype(int)
+                # Round counts to nearest integer (0 decimals) BEFORE comparison
+                indicator = (replicate_data.round(0) >= threshold).astype(int)
                 prob = indicator.sum(axis=1) / replicates
+                # Store the full probability series in pivot_data (optional but consistent)
                 pivot_data[f'Prob >= {threshold}'] = prob
+                # Store only the last probability for the results dictionary
                 probabilities[f'Prob >= {threshold}'] = prob.iloc[-1]
 
             avg = pivot_data.iloc[-1]['Avg.']
             std = pivot_data.iloc[-1]['Std. dev.']
-            std_err = pivot_data.iloc[-1]['Std. error'] # Get Std Error for the last row
+            std_err = pivot_data.iloc[-1]['Std. error']
 
             result = {
                 'Name': name,
                 'Avg.': avg,
                 'Std. dev.': std,
-                'Std. error': std_err, # Add Std Error here
+                'Std. error': std_err,
             }
             result.update(probabilities)
             results.append(result)
@@ -537,12 +543,20 @@ def table_data(files, thresholds=[1, 5, 20]):
     probability_cols = [col for col in result_df.columns if col.startswith('Prob >=')]
     probability_cols_sorted = sorted(probability_cols, key=lambda x: int(re.search(r'\d+', x).group()))
 
-    cols = ['Name', 'Avg.', 'Std. dev.', 'Std. error'] + probability_cols_sorted # Add Std. error to column list
-    result_df = result_df[cols]
+    # Define columns to round and columns to keep as is
+    cols_to_round = ['Avg.', 'Std. dev.', 'Std. error']
+    cols_order = ['Name'] + cols_to_round + probability_cols_sorted
+    result_df = result_df[cols_order]
+
+    # Round only specific columns based on global setting
+    for col in cols_to_round:
+        if col in result_df.columns:
+             result_df[col] = result_df[col].round(TABLE_DECIMAL_PLACES)
 
     result_df.set_index('Name', inplace=True)
 
-    return result_df.round(TABLE_DECIMAL_PLACES)
+    # Probabilities are not rounded here, rounding happens during formatting in table functions
+    return result_df
 
 
 def combine_plot_single_graph(plot_funcs, ncols=2):

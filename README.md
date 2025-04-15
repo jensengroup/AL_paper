@@ -1,6 +1,6 @@
-# AL Paper Title
+# Finding Drug Candidate Hits With a Hundred Samples: Ultra-low Data Screening With Active Learning
 
-This repository contains data and analysis scripts for the [AL-paper].
+This repository contains data and analysis scripts for the *Finding Drug Candidate Hits With a Hundred Samples: Ultra-low Data Screening With Active Learning*.
 
 ## Contents
 
