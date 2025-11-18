@@ -1,6 +1,6 @@
 # Finding Drug Candidate Hits With a Hundred Samples: Ultra-low Data Screening With Active Learning
 
-This repository contains data and analysis scripts for the paper *[Finding Drug Candidate Hits With a Hundred Samples: Ultra-low Data Screening With Active Learning]([https://doi.org/10.26434/chemrxiv-2025-jlml](https://chemistry-europe.onlinelibrary.wiley.com/share/JKNYRCHHIJFDMHR4GJRG?target=10.1002/ceur.202500134)*.
+This repository contains data and analysis scripts for the paper *[Finding Drug Candidate Hits With a Hundred Samples: Ultra-low Data Screening With Active Learning]([https://doi.org/10.26434/chemrxiv-2025-jlml](https://chemistry-europe.onlinelibrary.wiley.com/share/JKNYRCHHIJFDMHR4GJRG?target=10.1002/ceur.202500134))*.
 
 ## Contents
 
